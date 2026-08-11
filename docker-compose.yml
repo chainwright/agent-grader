@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: grader
+      POSTGRES_PASSWORD: grader
+      POSTGRES_DB: grader
+    ports:
+      - "5432:5432"
+    healthcheck:
+      # Приложение стартует только после того, как база реально отвечает,
+      # а не когда контейнер «запущен» — иначе первый запрос падает на гонке.
+      test: ["CMD-SHELL", "pg_isready -U grader -d grader"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+asyncpg://grader:grader@db:5432/grader
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"

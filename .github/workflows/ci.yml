@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: grader
+          POSTGRES_PASSWORD: grader
+          POSTGRES_DB: grader
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U grader -d grader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Тесты гоняются на PostgreSQL, а не на SQLite: расхождение движков —
+      # это как раз тот класс багов, который SQLite-прогон не ловит.
+      - name: Run tests against PostgreSQL
+        env:
+          DATABASE_URL: postgresql+asyncpg://grader:grader@localhost:5432/grader
+        run: pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t agent-grader:ci .
+
+      - name: Start the stack and check /health
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health; then
+              echo "healthy"; exit 0
+            fi
+            sleep 2
+          done
+          echo "сервис не поднялся"; docker compose logs; exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
