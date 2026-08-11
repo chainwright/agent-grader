@@ -37,6 +37,22 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def reset_engine() -> None:
+    """Закрыть движок и забыть его.
+
+    Пул соединений привязан к тому event loop, в котором был создан. Тесты
+    получают свой loop на каждый тест, поэтому переиспользованный движок
+    отдаёт «Future attached to a different loop» — на PostgreSQL это падение,
+    на SQLite молчит. Отсюда же следует, что в проде это звать не нужно:
+    там loop один на всё время жизни процесса.
+    """
+    global _engine, _sessionmaker
+    if _engine is not None:
+        await _engine.dispose()
+    _engine = None
+    _sessionmaker = None
+
+
 async def create_all() -> None:
     """Схема создаётся из моделей.
 

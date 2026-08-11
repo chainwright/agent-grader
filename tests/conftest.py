@@ -26,8 +26,11 @@ async def client():
     from app import db
     from app.main import app
 
+    # Движок пересоздаётся под event loop конкретного теста — переиспользованный
+    # пул asyncpg падает с «Future attached to a different loop».
+    await db.reset_engine()
+
     # чистая схема на каждый тест: остатки чужих сабмишенов ломают статистику
-    await db.create_all()
     async with db.engine().begin() as conn:
         await conn.run_sync(db.Base.metadata.drop_all)
         await conn.run_sync(db.Base.metadata.create_all)
@@ -35,3 +38,5 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+    await db.reset_engine()
